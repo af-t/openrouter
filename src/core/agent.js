@@ -1,4 +1,4 @@
-import { withRetry } from './utils.js';
+import { withRetry, ToolRegistry } from './utils.js';
 import terminalManager from './terminal.js';
 import logger from './logger.js';
 import config from '../config.js';
@@ -26,11 +26,11 @@ class Agent {
     };
     this.messages = [];
     this.system = [{ type: 'text', text: systemPrompt }];
-    this.tools = tools;
+    this.tools = tools || new ToolRegistry();
     this.terminalManager = tManager;
     this.isSubagent = isSubagent;
     this.thinking = { type: 'enabled', budget_tokens: 32000 };
-    this.max_tokens = parseInt(maxTokens || config.MAX_TOKENS) || undefined;
+    this.max_tokens = parseInt(maxTokens || config.MAX_TOKENS || 0) || undefined;
     this.usage = { cost: 0, tokens: 0 };
     this.finalReport = null; // Store subagent result
     this.context = new Map();
@@ -39,7 +39,7 @@ class Agent {
     this.use([
       {
         name: 'Report',
-        description: 'Signal the completion of an assigned task. Call this tool to return a final summary and a list of artifacts (files created or modified) to the requester.',
+        description: 'Signal the completion of an assigned task. Call this tool to return a final summary and data to the requester.',
         input_schema: {
           type: 'object',
           properties: {
@@ -76,7 +76,7 @@ class Agent {
           },
           required: ['key']
         },
-        execute: async({ key }) => this.context.has(key) ? this.context.get(key) : 'null'
+        execute: async({ key }) => this.context.has(key) ? this.context.get(key) : '(Empty)'
       },
       {
         name: 'StoreList',
@@ -167,7 +167,7 @@ class Agent {
     return response;
   }
 
-  async use(tools) {
+  use(tools) {
     if (Array.isArray(tools)) {
       for (const tool of tools) {
         this.tools.register(tool);
