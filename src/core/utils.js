@@ -59,9 +59,12 @@ export class ToolRegistry {
     const res = [];
     for (const [name, val] of this._tools) {
       res.push({
-        name,
-        description: val.description,
-        input_schema: val.input_schema
+        type: 'function',
+        function: {
+          name,
+          description: val.description,
+          parameters: val.input_schema
+        }
       });
     }
     return res;
