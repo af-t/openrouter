@@ -10,7 +10,7 @@ describe('WriteTool', () => {
 
   beforeEach(async () => {
     mock.restoreAll();
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gemini-write-test-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-write-test-'));
   });
 
   afterEach(async () => {

@@ -7,19 +7,34 @@ import logger from './logger.js';
 
 
 export async function getIgnoreFilter() {
+  const ig = ignore();
   try {
     const gitignorePath = path.join(process.cwd(), '.gitignore');
     const content = await fs.readFile(gitignorePath, 'utf8');
-    return ignore().add(content);
+    ig.add(content);
   } catch {
-    return ignore();
+    // ignore if .gitignore not found
   }
+
+  return {
+    test: (filePath) => {
+      const relPath = path.relative(process.cwd(), ensureSafePath(filePath));
+      return ig.test(relPath);
+    },
+    ignores: (filePath) => {
+      const relPath = path.relative(process.cwd(), ensureSafePath(filePath));
+      return ig.ignores(relPath);
+    },
+    add: (content) => ig.add(content)
+  };
 }
 
 export function ensureSafePath(filePath) {
   const root = process.cwd();
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(root)) {
+  const relative = path.relative(root, resolvedPath);
+
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Access denied: Path '${filePath}' is outside project root`);
   }
   return resolvedPath;
@@ -121,8 +136,12 @@ export class ToolRegistry {
 }
 
 async function isDirectory(dirPath) {
-  const stat = await fs.stat(dirPath);
-  return stat.isDirectory();
+  try {
+    const stat = await fs.stat(dirPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 export async function* loadTools(dirPath) {

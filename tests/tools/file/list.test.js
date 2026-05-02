@@ -7,24 +7,15 @@ import * as ListTool from '../../../src/tools/file/list.js';
 
 describe('ListTool', () => {
   let tmpDir;
-  const baseDir = path.join(process.cwd(), 'tests', 'tmp', 'list');
 
   beforeEach(async () => {
     mock.restoreAll();
-    await fs.mkdir(baseDir, { recursive: true });
-    tmpDir = await fs.mkdtemp(path.join(baseDir, 'test-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-list-test-'));
+    mock.method(process, 'cwd', () => tmpDir);
   });
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
-  });
-
-  after(async () => {
-    try {
-      await fs.rm(baseDir, { recursive: true, force: true });
-      // Also try to remove the common tests/tmp if it's empty
-      await fs.rmdir(path.join(process.cwd(), 'tests', 'tmp'));
-    } catch {}
   });
 
   it('should have correct metadata', () => {

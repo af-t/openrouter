@@ -11,7 +11,7 @@ describe('ReadTool', () => {
 
   beforeEach(async () => {
     mock.restoreAll();
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gemini-read-test-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-read-test-'));
     testFile = path.join(tmpDir, 'test.txt');
   });
 

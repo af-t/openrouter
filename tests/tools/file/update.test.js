@@ -11,7 +11,7 @@ describe('UpdateTool', () => {
 
   beforeEach(async () => {
     mock.restoreAll();
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gemini-update-test-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-update-test-'));
     testFile = path.join(tmpDir, 'test.txt');
   });
 
@@ -30,11 +30,11 @@ describe('UpdateTool', () => {
     const res = await UpdateTool.execute({
       path: testFile,
       old_text: 'world!',
-      new_text: 'Gemini!'
+      new_text: 'Agent!'
     });
     assert.match(res, /updated successfully/);
     const content = await fs.readFile(testFile, 'utf8');
-    assert.strictEqual(content, 'Hello Gemini!\nThis is a test.');
+    assert.strictEqual(content, 'Hello Agent!\nThis is a test.');
   });
 
   it('should update file with start_line and end_line', async () => {
