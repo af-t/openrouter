@@ -86,15 +86,73 @@ export class ToolRegistry {
     return res;
   }
 
-  register({ name, description, input_schema, execute }) {
+  register({ name, description, input_schema, execute, dependencies = [] }) {
     if (typeof execute !== 'function') throw Error('tools cannot be executed');
-    this._tools.set(name, { description, input_schema, execute });
+    this._tools.set(name, { name, description, input_schema, execute, dependencies });
   }
 
   async execute(name, input, context) {
     const tool = this._tools.get(name);
     if (!tool) throw Error(`Tool ${name} not found`);
-    return await tool.execute(input, context);
+    
+    // Resolve dependencies first
+    const resolvedDeps = await this._resolveDependencies(tool, context);
+    
+    // Execute tool with resolved dependencies available
+    return await tool.execute(input, { ...context, dependencies: resolvedDeps });
+  }
+
+  async _resolveDependencies(tool, context) {
+    if (!tool.dependencies || tool.dependencies.length === 0) {
+      return { get: () => null, getAll: () => ({}) };
+    }
+
+    const results = {};
+    for (const depName of tool.dependencies) {
+      if (!this._tools.has(depName)) {
+        throw Error(`Dependency tool '${depName}' for '${tool.name || 'unknown'}' not found`);
+      }
+      // Execute dependency with minimal/default input
+      // Dependencies can be configured with their own default inputs
+      const depTool = this._tools.get(depName);
+      const depInput = depTool.defaultInput || {};
+      try {
+        results[depName] = await this.execute(depName, depInput, context);
+      } catch (e) {
+        logger.error(`Error executing dependency ${depName}:`, e.message);
+        throw e;
+      }
+    }
+    
+    return {
+      get: (name) => results[name],
+      getAll: () => results
+    };
+  }
+
+  setDefaultInput(name, input) {
+    const tool = this._tools.get(name);
+    if (!tool) throw Error(`Tool ${name} not found`);
+    tool.defaultInput = input;
+  }
+
+  getDependencies(name) {
+    const tool = this._tools.get(name);
+    if (!tool) throw Error(`Tool ${name} not found`);
+    return tool.dependencies || [];
+  }
+
+  hasDependency(name, dependencyName) {
+    const deps = this.getDependencies(name);
+    return deps.includes(dependencyName);
+  }
+
+  getDependencyGraph() {
+    const graph = new Map();
+    for (const [name, tool] of this._tools) {
+      graph.set(name, tool.dependencies || []);
+    }
+    return graph;
   }
 
   async connectMcpServer({ name, command, args, env }) {
