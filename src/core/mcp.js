@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
+import { CONSTANTS } from './utils.js';
 
 export class McpNativeClient extends EventEmitter {
   constructor(config) {
@@ -13,6 +14,7 @@ export class McpNativeClient extends EventEmitter {
     this.initialized = false;
     this.capabilities = null;
     this.serverInfo = null;
+    this.defaultTimeout = config.timeout || CONSTANTS.MCP_TIMEOUT;
   }
 
   async connect() {
@@ -58,7 +60,8 @@ export class McpNativeClient extends EventEmitter {
     await this.notify('notifications/initialized', {});
   }
 
-  async request(method, params, timeout = 30000) {
+  async request(method, params, timeout) {
+    const effectiveTimeout = timeout || this.defaultTimeout;
     if (!this.process || this.process.killed) {
       throw new Error("Process not running");
     }
