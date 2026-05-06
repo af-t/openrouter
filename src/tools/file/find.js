@@ -21,16 +21,13 @@ export const input_schema = {
  */
 function spawnCommand(command, args) {
   return new Promise((resolve, reject) => {
-    const stdout = [];
-    const stderr = [];
-    const child = spawn(command, args);
+    const output = [];
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 1] });
 
-    child.stdout.on('data', chunk => stdout.push(chunk));
-    child.stderr.on('data', chunk => stderr.push(chunk));
+    child.stdout.on('data', chunk => output.push(chunk));
     child.on('error', (err) => reject(err));
     child.on('exit', (code) => {
-      const out = Buffer.concat(stdout).toString();
-      const err = Buffer.concat(stderr).toString();
+      const out = Buffer.concat(output).toString();
 
       // find: non-zero on permission errors — partial results still valid
       // rg: exit code 1 = no matches (not an error), exit code 2 = actual error
@@ -41,7 +38,7 @@ function spawnCommand(command, args) {
       if (code === 0 || isPartialSuccess) {
         resolve(out);
       } else {
-        reject(new Error(err || `exit code ${code}`));
+        reject(new Error(out || `exit code ${code}`));
       }
     });
   });

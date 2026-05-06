@@ -132,7 +132,6 @@ class SkillRegistry {
         score += 50;
       }
 
-      const descWords = descLower.split(/\s+/);
       const qWords = q.split(/\s+/);
       for (const qw of qWords) {
         if (descLower.includes(qw)) score += 10;

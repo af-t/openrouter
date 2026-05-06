@@ -1,7 +1,7 @@
 import { McpClientWrapper } from './mcp.js';
 import config from '../config.js';
 import fs from 'node:fs/promises';
-import { realpathSync, statSync } from 'node:fs';
+import { realpathSync, statSync, lstatSync, readlinkSync } from 'node:fs';
 import path from 'node:path';
 import ignore from 'ignore';
 import logger from './logger.js';
@@ -83,9 +83,18 @@ export function ensureSafePath(filePath) {
   }
 
   // 2. Reject URL-encoded path traversal (double encoding attacks)
-  // Decode first to catch %2e%2e (..), then check for raw traversal
-  const decoded = filePath.includes('%') ? tryDecodeURIComponent(filePath) : filePath;
-  if (/%2e%2e|%2f|%5c/i.test(filePath) || decoded.includes('..')) {
+  let decoded = filePath;
+  let iterations = 0;
+  while (decoded.includes('%') && iterations < 3) {
+    decoded = tryDecodeURIComponent(decoded);
+    iterations++;
+  }
+
+  if (
+    /%2e%2e|%2f|%5c/i.test(filePath) ||
+    decoded.includes('..') ||
+    (filePath.includes('%') && (decoded.includes('/') || decoded.includes('\\')))
+  ) {
     throw new Error(`Access denied: Path contains URL-encoded traversal characters`);
   }
 
@@ -98,15 +107,38 @@ export function ensureSafePath(filePath) {
   const resolvedPath = path.resolve(filePath);
   const relative = path.relative(root, resolvedPath);
 
-  // 4. Must be within project root (empty string = outside — path IS the root)
-  if (relative.startsWith('..') || path.isAbsolute(relative) || !relative) {
+  // 4. Must be within project root
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Access denied: Path '${filePath}' is outside project root`);
   }
 
   // 5. Resolve symlinks to prevent TOCTOU (time-of-check-time-of-use)
   try {
-    return realpathSync(resolvedPath);
-  } catch {
+    const stats = lstatSync(resolvedPath);
+    if (stats.isSymbolicLink()) {
+      let realPath;
+      try {
+        realPath = realpathSync(resolvedPath);
+      } catch {
+        // Broken symlink — check its raw target
+        const target = readlinkSync(resolvedPath);
+        realPath = path.resolve(path.dirname(resolvedPath), target);
+      }
+      const relativeReal = path.relative(root, realPath);
+      if (relativeReal.startsWith('..') || path.isAbsolute(relativeReal)) {
+        throw new Error(`Access denied: Path '${filePath}' resolves outside project root`);
+      }
+      return realPath;
+    }
+    // Not a symlink, but realpathSync still helps normalize things like /./ or //
+    const realPath = realpathSync(resolvedPath);
+    const relativeReal = path.relative(root, realPath);
+    if (relativeReal.startsWith('..') || path.isAbsolute(relativeReal)) {
+      throw new Error(`Access denied: Path '${filePath}' resolves outside project root`);
+    }
+    return realPath;
+  } catch (err) {
+    if (err.message.startsWith('Access denied')) throw err;
     // Path doesn't exist yet (valid for Write tool); validate parent directory
     const dir = path.dirname(resolvedPath);
     try {
@@ -183,7 +215,23 @@ export async function withRetry(func, count = config.MAX_RETRIES, callback) {
     }
   }
 
-  callback?.();
+  // Call the failure callback with a 5-second safety timeout.
+  // If the callback hangs, we proceed after timeout.
+  if (callback) {
+    try {
+      const callbackPromise = callback();
+      // If callback returns a promise, guard it with a timeout
+      if (callbackPromise && typeof callbackPromise.then === 'function') {
+        await Promise.race([
+          callbackPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Callback timed out')), 5000))
+        ]);
+      }
+    } catch (err) {
+      logger.warn('withRetry failure callback failed:', err.message);
+    }
+  }
+
   throw lastError;
 }
 

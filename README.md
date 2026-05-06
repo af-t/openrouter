@@ -104,7 +104,7 @@ cp .env.example .env
 | Variable                | Required | Description                                              |
 |-------------------------|----------|----------------------------------------------------------|
 | `OPENROUTER_API_KEY`    | Yes      | Your OpenRouter API key                                  |
-| `OPENROUTER_MODEL`      | No       | Default model (e.g. `google/gemini-2.5-flash-preview`)   |
+| `OPENROUTER_MODEL`      | No       | Default model (e.g. `inclusionai/ling-2.6-1t:free`) |
 | `OPENROUTER_MAX_TOKENS` | No       | Maximum output tokens                                    |
 | `OPENROUTER_ORDER`      | No       | Comma-separated provider priority order                  |
 | `OPENROUTER_ONLY`       | No       | Restrict to specific providers only                      |
@@ -357,6 +357,8 @@ Factory function to create an Agent instance.
 | Property       | Type         | Description                          |
 |----------------|--------------|--------------------------------------|
 | `messages`     | array        | Conversation history                 |
+| `maxTurns`     | number       | Max LLM request cycles               |
+| `isSubagent`   | boolean      | Whether the agent is a sub-agent     |
 | `tools`        | ToolRegistry | Registry of registered tools         |
 | `usage`        | object       | `{ cost: number, tokens: number }`   |
 | `systemPrompt` | string       | System prompt (can be overridden)    |
