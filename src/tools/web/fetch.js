@@ -16,34 +16,24 @@ const BLOCKED_IP_RANGES = [
   /^fd00:/,          // IPv6 unique local
 ];
 
-/**
- * Check if text content appears binary (non-printable chars > 70%).
- */
+// Binary if non-printable chars > 70%
 function isBinaryContent(text) {
   const nonPrintable = (text.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g) || []).length;
   return nonPrintable / text.length > 0.7;
 }
 
-/**
- * Return content with a content-type annotation prefix.
- */
+// Prepend Content-Type annotation
 function withContentType(contentType, body) {
   const label = `Content-Type: ${contentType}`;
   return `${label}\n\n${body}`;
 }
 
-/**
- * Check if an IP address is within a blocked range.
- */
+// Check if IP is in blocked range
 function isBlockedIp(ip) {
   return BLOCKED_IP_RANGES.some(range => range.test(ip));
 }
 
-/**
- * Check if a URL targets an internal/private resource (SSRF prevention).
- * Blocks private IPs, localhost, DNS rebinding, and non-HTTP(S) protocols.
- * Returns a Promise that resolves if the URL is safe, or rejects with an error.
- */
+// SSRF check — blocks private IPs, localhost, DNS rebinding, non-HTTP(S)
 async function checkSSRF(urlStr) {
   try {
     const url = new URL(urlStr);

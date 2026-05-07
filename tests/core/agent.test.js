@@ -9,8 +9,8 @@ describe('Agent', () => {
     // We'll import with key present since env always has it
     const agentMod = await import('../../src/core/agent.js');
     Agent = agentMod.default;
-    const utilsMod = await import('../../src/core/utils.js');
-    ToolRegistry = utilsMod.ToolRegistry;
+    const registryMod = await import('../../src/registry/tool.js');
+    ToolRegistry = registryMod.ToolRegistry;
   });
 
   describe('constructor', () => {

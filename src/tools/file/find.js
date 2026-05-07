@@ -4,7 +4,7 @@ import path from 'node:path';
 import { CONSTANTS, ensureSafePath } from '../../core/utils.js';
 
 export const name = 'Find';
-export const description = 'Search for files by name or content within a directory. Uses native find(1) for filename search and ripgrep for content search — both are orders of magnitude faster than manual directory walking. Falls back to Node.js recursive walk when shell tools are unavailable.';
+export const description = 'Search for files by name or content within a directory.  Prioritize using this tool over using commands like `find -iname` or `grep -R` for portability reasons.';
 export const input_schema = {
   type: 'object',
   properties: {
@@ -15,10 +15,7 @@ export const input_schema = {
   required: ['pattern', 'mode']
 };
 
-/**
- * Spawn a command and capture stdout — matches the pattern used in edit.js.
- * Handles partial success: find with permission errors, rg exit code 1 (no matches).
- */
+// Spawn command, capture stdout. find/rg non-zero exits are ok.
 function spawnCommand(command, args) {
   return new Promise((resolve, reject) => {
     const output = [];
@@ -44,9 +41,7 @@ function spawnCommand(command, args) {
   });
 }
 
-/**
- * Quick check if a command exists in PATH via `which`.
- */
+// Check if command exists in PATH
 function commandAvailable(cmd) {
   return new Promise((resolve) => {
     const child = spawn('which', [cmd], { stdio: 'ignore' });

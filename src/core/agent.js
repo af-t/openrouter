@@ -1,5 +1,6 @@
-import { withRetry, ToolRegistry } from './utils.js';
-import { getDirname } from './dirname.js';
+import { withRetry } from './utils.js';
+import { ToolRegistry } from '../registry/tool.js';
+import { getDirname } from './utils.js';
 import { ApiError, ConfigError } from './errors.js';
 import logger from './logger.js';
 import config from '../config.js';
@@ -66,7 +67,7 @@ class Agent {
     })();
   }
 
-  /** Get API key (read-only) — used by Delegate tool to create sub-agents */
+  // Read-only API key — used by Delegate tool for sub-agents
   get apiKey() {
     return this.#apiKey;
   }
