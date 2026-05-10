@@ -16,9 +16,20 @@ const DEFAULT_MAX_TURNS = 25;
 
 class Agent {
   #apiKey;
+  #envInfo = [
+    '',
+    '',
+    '# Environment',
+    'You have been invoked in the following environment:',
+    ` - Primary working directory: ${process.cwd()}`,
+    ` - Is a git repository: ${!!fs.existsSync('.git')}`,
+    ` - Platform: ${os.platform()}`,
+    ` - Shell: ${process.env.SHELL || 'unknown'}`,
+    ` - OS version: ${os.release()}`,
+  ];
 
   constructor(options = {}) {
-    const { apiKey, model, tools, order, only, maxTokens, systemPrompt, maxTurns, reasoningEffort } = options;
+    const { apiKey, model, tools, order, only, maxTokens, systemPrompt, maxTurns, effort } = options;
 
     if (!apiKey && !config.API_KEY) {
       throw new ConfigError('OPENROUTER_API_KEY is required. Set it in .env or pass it as an option.');
@@ -28,7 +39,7 @@ class Agent {
     this.provider = { order, only };
     this.messages = [];
     this.tools = tools || new ToolRegistry();
-    this.reasoningEffort = reasoningEffort || 'high';
+    this.effort = effort || 'high';
     this.maxTokens = parseInt(maxTokens || config.MAX_TOKENS || 0) || undefined;
     this.usage = { cost: 0, tokens: 0 };
     // Max request turns before forcing a break.
@@ -44,19 +55,7 @@ class Agent {
           logger.debug('No RULE.md found, using default instruction.');
         }
 
-        const envInfo = [
-          '',
-          '',
-          '# Environment',
-          'You have been invoked in the following environment:',
-          ` - Primary working directory: ${process.cwd()}`,
-          ` - Is a git repository: ${!!fs.existsSync('.git')}`,
-          ` - Platform: ${os.platform()}`,
-          ` - Shell: ${process.env.SHELL || 'unknown'}`,
-          ` - OS version: ${os.release()}`,
-        ];
-
-        return base + envInfo.join('\n');
+        return base;
       })();
   }
 
@@ -65,7 +64,7 @@ class Agent {
     return this.#apiKey;
   }
 
-  async _request(payload) {
+  async #request(payload) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
     try {
@@ -103,7 +102,7 @@ class Agent {
     }
   }
 
-  async _send() {
+  async #send() {
     // Build messages for payload with cache_control on a defensive copy
     const messagesForPayload = this.messages.map((msg, idx) => {
       // Only add cache_control to the last user message's last content part (on a copy)
@@ -132,7 +131,7 @@ class Agent {
           content: [
             {
               type: 'text',
-              text: this.systemPrompt,
+              text: this.systemPrompt + this.#envInfo.join('\n'),
               cache_control: { type: 'ephemeral' },
             },
           ],
@@ -142,14 +141,14 @@ class Agent {
       tools: this.tools.getDefinitions(),
       provider: this.provider,
       max_tokens: this.maxTokens,
-      reasoning_effort: this.reasoningEffort,
+      reasoning: { effort: this.effort },
     };
 
     if (payload.tools.length === 0) delete payload.tools;
     if (!payload.max_tokens) delete payload.max_tokens;
 
     logger.debug(`Sending request to LLM (${this.model})...`);
-    const response = await this._request(payload);
+    const response = await this.#request(payload);
     logger.debug(`Received response from LLM.`);
 
     this.usage.cost += response.usage?.cost || 0;
@@ -217,7 +216,7 @@ class Agent {
         }
       }
 
-      const response = await withRetry(() => this._send(), 5);
+      const response = await withRetry(() => this.#send(), 5);
       const message = response.choices?.[0]?.message;
       if (!message) {
         logger.warn('Agent: LLM returned no message in response. Breaking loop.');

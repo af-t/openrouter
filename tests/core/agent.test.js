@@ -26,7 +26,7 @@ describe('Agent', () => {
       assert.equal(typeof agent.usage, 'object');
       assert.equal(agent.usage.cost, 0);
       assert.equal(agent.usage.tokens, 0);
-      assert.equal(agent.reasoningEffort, 'high');
+      assert.equal(agent.effort, 'high');
       assert.equal(agent.maxTurns, 25);
       assert.ok(Array.isArray(agent.messages));
       assert.equal(agent.messages.length, 0);
@@ -47,14 +47,14 @@ describe('Agent', () => {
       assert.deepEqual(agent.provider.only, ['openai']);
     });
 
-    it('accepts reasoningEffort option', () => {
-      const agent = new Agent({ apiKey: 'sk-key', reasoningEffort: 'low' });
-      assert.equal(agent.reasoningEffort, 'low');
+    it('accepts effort option', () => {
+      const agent = new Agent({ apiKey: 'sk-key', effort: 'low' });
+      assert.equal(agent.effort, 'low');
     });
 
-    it('default reasoningEffort is high', () => {
+    it('default effort is high', () => {
       const agent = new Agent({ apiKey: 'sk-key' });
-      assert.equal(agent.reasoningEffort, 'high');
+      assert.equal(agent.effort, 'high');
     });
 
     it('accepts maxTurns option', () => {
