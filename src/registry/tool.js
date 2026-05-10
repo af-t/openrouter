@@ -24,18 +24,25 @@ export class ToolRegistry {
     };
   }
 
-  getDefinitions() {
+  getDefinitions(filter) {
     const res = [];
+    const push = (name, val) => res.push({
+      type: 'function',
+      function: {
+        name,
+        description: val.description,
+        parameters: val.input_schema,
+      }
+    });
+
     for (const [name, val] of this.#tools) {
-      res.push({
-        type: 'function',
-        function: {
-          name,
-          description: val.description,
-          parameters: val.input_schema,
-        },
-      });
+      if (filter && Array.isArray(filter)) {
+        if (filter.includes(name)) push(name, val);
+      } else {
+        push(name, val);
+      }
     }
+
     return res;
   }
 
@@ -79,7 +86,7 @@ export class ToolRegistry {
     if (tool.input_schema) {
       const { required = [], properties = {} } = tool.input_schema;
       for (const key of required) {
-        if (input[key] === undefined || input[key] === null || input[key] === '') {
+        if (input[key] === undefined || input[key] === null) {
           throw new Error(`Tool '${name}' requires parameter '${key}'`);
         }
       }
