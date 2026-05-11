@@ -1,5 +1,6 @@
 import { McpClientWrapper } from '../core/mcp.js';
 import logger from '../core/logger.js';
+import { truncateOutput, CONSTANTS } from '../core/utils.js';
 
 export class ToolRegistry {
   #tools = new Map();
@@ -26,14 +27,26 @@ export class ToolRegistry {
 
   getDefinitions(filter) {
     const res = [];
-    const push = (name, val) => res.push({
-      type: 'function',
-      function: {
-        name,
-        description: val.description,
-        parameters: val.input_schema,
-      }
-    });
+    const push = (name, val) => {
+      const schema = val.input_schema || { type: 'object', properties: {} };
+      res.push({
+        type: 'function',
+        function: {
+          name,
+          description: val.description,
+          parameters: {
+            ...schema,
+            properties: {
+              ...(schema.properties || {}),
+              output_limit: {
+                type: 'number',
+                description: 'Maximum characters to return from this tool call. Overrides the agent default.',
+              },
+            },
+          },
+        },
+      });
+    };
 
     for (const [name, val] of this.#tools) {
       if (filter && Array.isArray(filter)) {
@@ -59,6 +72,8 @@ export class ToolRegistry {
   }
 
   register({ name, description, input_schema, execute }) {
+    if (name == null || typeof name !== 'string') throw Error('Tool must have a name');
+    if (description == null || typeof description !== 'string') throw Error('Tool must have a description');
     if (typeof execute !== 'function') throw Error('Tool must have an execute function');
     this.#tools.set(name, { description, input_schema, execute });
   }
@@ -118,14 +133,17 @@ export class ToolRegistry {
       }
     }
 
-    const result = await tool.execute(input, context);
+    const { output_limit, ...cleanInput } = input;
+    const limit = output_limit ?? context?.agent?.maxToolOutputChars ?? CONSTANTS.MAX_TOOL_OUTPUT;
+
+    const result = await tool.execute(cleanInput, context);
 
     // Run after-execute hooks (can throw to signal problems)
     for (const hook of this.#hooks.afterExecute) {
       await hook({ name, input, context, result });
     }
 
-    return result;
+    return truncateOutput(result, limit);
   }
 
   async connectMcpServer({ name, command, args, env }) {

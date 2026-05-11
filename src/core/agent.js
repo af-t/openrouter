@@ -1,6 +1,5 @@
-import { withRetry } from './utils.js';
+import { withRetry, getDirname, CONSTANTS } from './utils.js';
 import { ToolRegistry } from '../registry/tool.js';
-import { getDirname } from './utils.js';
 import { ApiError, ConfigError } from './errors.js';
 import logger from './logger.js';
 import config from '../config.js';
@@ -29,7 +28,8 @@ class Agent {
   ];
 
   constructor(options = {}) {
-    const { apiKey, model, tools, order, only, maxTokens, systemPrompt, maxTurns, effort } = options;
+    const { apiKey, model, tools, order, only, maxTokens, systemPrompt, maxTurns, effort, maxToolOutputChars } =
+      options;
 
     if (!apiKey && !config.API_KEY) {
       throw new ConfigError('OPENROUTER_API_KEY is required. Set it in .env or pass it as an option.');
@@ -45,6 +45,7 @@ class Agent {
     // Max request turns before forcing a break.
     // Set to 0 for unlimited (used by subagents via Delegate).
     this.maxTurns = maxTurns ?? (parseInt(config.MAX_TURNS || 0) || DEFAULT_MAX_TURNS);
+    this.maxToolOutputChars = maxToolOutputChars ?? CONSTANTS.MAX_TOOL_OUTPUT;
     this.systemPrompt =
       systemPrompt ||
       (() => {
@@ -102,10 +103,8 @@ class Agent {
     }
   }
 
-  async #send() {
-    // Build messages for payload with cache_control on a defensive copy
+  #buildPayload() {
     const messagesForPayload = this.messages.map((msg, idx) => {
-      // Only add cache_control to the last user message's last content part (on a copy)
       if (
         idx === this.messages.length - 1 &&
         msg.role === 'user' &&
@@ -147,14 +146,129 @@ class Agent {
     if (payload.tools.length === 0) delete payload.tools;
     if (!payload.max_tokens) delete payload.max_tokens;
 
+    return payload;
+  }
+
+  async #send() {
     logger.debug(`Sending request to LLM (${this.model})...`);
-    const response = await this.#request(payload);
+    const response = await this.#request(this.#buildPayload());
     logger.debug(`Received response from LLM.`);
 
     this.usage.cost += response.usage?.cost || 0;
     this.usage.tokens += response.usage?.total_tokens || 0;
 
     return response;
+  }
+
+  async #sendStream(notify) {
+    const payload = this.#buildPayload();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+    let res;
+    try {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.#apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
+
+    if (!res.ok) {
+      clearTimeout(timer);
+      let body;
+      try {
+        body = await res.json();
+      } catch {
+        body = {};
+      }
+      throw new ApiError(body?.error?.message || `OpenRouter API error (${res.status})`, res.status, body);
+    }
+
+    let content = '';
+    let reasoning = '';
+    const tcMap = {};
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') break outer;
+
+          let chunk;
+          try {
+            chunk = JSON.parse(data);
+          } catch {
+            continue;
+          }
+
+          this.usage.cost += chunk.usage?.cost || 0;
+          this.usage.tokens += chunk.usage?.total_tokens || 0;
+
+          const delta = chunk.choices?.[0]?.delta;
+          if (!delta) continue;
+
+          const cd = delta.content || '';
+          const rd = delta.reasoning || '';
+          if (cd) content += cd;
+          if (rd) reasoning += rd;
+
+          for (const tc of delta.tool_calls || []) {
+            if (!tcMap[tc.index]) {
+              tcMap[tc.index] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } };
+            }
+            if (tc.function?.name) tcMap[tc.index].function.name += tc.function.name;
+            if (tc.function?.arguments) tcMap[tc.index].function.arguments += tc.function.arguments;
+          }
+
+          if (cd || rd) {
+            try {
+              await notify({
+                content_delta: cd || null,
+                content: content || null,
+                reasoning_delta: rd || null,
+                reasoning: reasoning || null,
+              });
+            } catch (err) {
+              logger.debug('Notify callback error:', err.message);
+            }
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      reader.releaseLock();
+    }
+
+    const tool_calls = Object.keys(tcMap).length ? Object.values(tcMap) : undefined;
+    if (tool_calls) {
+      try {
+        await notify({ tool_calls });
+      } catch (err) {
+        logger.debug('Notify callback error:', err.message);
+      }
+    }
+
+    return {
+      choices: [{ message: { content: content || null, reasoning: reasoning || null, tool_calls } }],
+    };
   }
 
   use(tools) {
@@ -172,8 +286,9 @@ class Agent {
     this.usage = { cost: 0, tokens: 0 };
   }
 
-  async run(prompt, notify = () => null, options = {}) {
+  async run(prompt, notify = null, options = {}) {
     const { signal } = options;
+    const isStreaming = typeof notify === 'function';
 
     if (prompt) {
       const contents = Array.isArray(prompt) ? prompt : [{ type: 'text', text: prompt }];
@@ -216,7 +331,7 @@ class Agent {
         }
       }
 
-      const response = await withRetry(() => this.#send(), 5);
+      const response = await withRetry(() => (isStreaming ? this.#sendStream(notify) : this.#send()), 5);
       const message = response.choices?.[0]?.message;
       if (!message) {
         logger.warn('Agent: LLM returned no message in response. Breaking loop.');
@@ -224,11 +339,6 @@ class Agent {
       }
 
       const { content, reasoning, tool_calls } = message;
-      try {
-        await notify({ content, reasoning, tool_calls });
-      } catch (err) {
-        logger.debug('Notify callback error:', err.message);
-      }
 
       this.messages.push({ role: 'assistant', reasoning, content, tool_calls });
 
