@@ -8,16 +8,19 @@ import { ensureSafePath } from '../../core/utils.js';
 
 async function diff(file1, file2) {
   const output = [];
+  const errOutput = [];
 
   return new Promise((resolve, reject) => {
-    // stdio: [stdin, stdout, stderr] -> redirect 2 to 1 (stdout)
-    const child = spawn('bash', ['-c', `diff "${file1}" "${file2}"`, '2>&1']);
+    const child = spawn('diff', [file1, file2], { stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (chunk) => output.push(chunk));
+    child.stderr.on('data', (chunk) => errOutput.push(chunk));
     child.on('error', (err) => reject(err));
     child.on('exit', (code) => {
       // diff exit codes: 0=identical, 1=different, 2=trouble
       if (code > 1) {
-        reject(new Error(`diff failed with code ${code}: ${Buffer.concat(output).toString()}`));
+        const err = Buffer.concat(errOutput).toString();
+        const out = Buffer.concat(output).toString();
+        reject(new Error(`diff failed with code ${code}: ${err || out}`));
         return;
       }
       resolve(Buffer.concat(output).toString());

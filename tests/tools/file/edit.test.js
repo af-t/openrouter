@@ -117,3 +117,110 @@ describe('edit.js execute', () => {
     );
   });
 });
+
+describe('edit.js — shell metacharacter path resistance', () => {
+  const SHELL_FIXTURES = path.resolve('tests/fixtures');
+
+  before(async () => {
+    await fs.mkdir(SHELL_FIXTURES, { recursive: true });
+  });
+
+  after(async () => {
+    // Clean up any leftover temp files
+    try {
+      const entries = await fs.readdir(SHELL_FIXTURES);
+      for (const entry of entries) {
+        if (entry.startsWith('edit-shell-')) {
+          await fs.rm(path.join(SHELL_FIXTURES, entry), { force: true });
+        }
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  it('handles file path with $(id) safely — does not execute id', async () => {
+    const dangerousName = 'edit-shell-dollar-sub-$(id).txt';
+    const filePath = path.join(SHELL_FIXTURES, dangerousName);
+    await fs.writeFile(filePath, 'line one: original\nline two: keep me\n', 'utf8');
+
+    try {
+      const mod = await import('../../../src/tools/file/edit.js');
+      const result = await mod.execute({
+        path: filePath,
+        old_text: 'original',
+        new_text: 'REPLACED',
+      });
+      // Should complete successfully without executing 'id'
+      assert.ok(result.includes('updated successfully'), 'edit should succeed');
+      const content = await fs.readFile(filePath, 'utf8');
+      assert.ok(content.includes('REPLACED'), 'file should contain replacement');
+      // $(id) should not have been executed — no uid=xxx output in result
+      assert.ok(!result.includes('uid='), '$(id) should not be executed');
+    } finally {
+      await fs.rm(filePath, { force: true });
+    }
+  });
+
+  it('handles file path with backticks safely — does not execute command', async () => {
+    const dangerousName = 'edit-shell-backtick-`whoami`.txt';
+    const filePath = path.join(SHELL_FIXTURES, dangerousName);
+    await fs.writeFile(filePath, 'line one: original\nline two: keep me\n', 'utf8');
+
+    try {
+      const mod = await import('../../../src/tools/file/edit.js');
+      const result = await mod.execute({
+        path: filePath,
+        old_text: 'original',
+        new_text: 'REPLACED',
+      });
+      assert.ok(result.includes('updated successfully'), 'edit should succeed');
+      const content = await fs.readFile(filePath, 'utf8');
+      assert.ok(content.includes('REPLACED'), 'file should contain replacement');
+    } finally {
+      await fs.rm(filePath, { force: true });
+    }
+  });
+
+  it('handles file path with semicolon safely — does not chain commands', async () => {
+    const dangerousName = 'edit-shell-semicolon-;rm-test.txt';
+    const filePath = path.join(SHELL_FIXTURES, dangerousName);
+    await fs.writeFile(filePath, 'line one: original\nline two: keep me\n', 'utf8');
+
+    try {
+      const mod = await import('../../../src/tools/file/edit.js');
+      const result = await mod.execute({
+        path: filePath,
+        old_text: 'original',
+        new_text: 'REPLACED',
+      });
+      assert.ok(result.includes('updated successfully'), 'edit should succeed');
+      const content = await fs.readFile(filePath, 'utf8');
+      assert.ok(content.includes('REPLACED'), 'file should contain replacement');
+      // File should still exist (not deleted by a chained rm)
+      await fs.access(filePath);
+    } finally {
+      await fs.rm(filePath, { force: true });
+    }
+  });
+
+  it('handles file path with pipe character safely', async () => {
+    const dangerousName = 'edit-shell-pipe-|cat.txt';
+    const filePath = path.join(SHELL_FIXTURES, dangerousName);
+    await fs.writeFile(filePath, 'line one: original\nline two: keep me\n', 'utf8');
+
+    try {
+      const mod = await import('../../../src/tools/file/edit.js');
+      const result = await mod.execute({
+        path: filePath,
+        old_text: 'original',
+        new_text: 'REPLACED',
+      });
+      assert.ok(result.includes('updated successfully'), 'edit should succeed');
+      const content = await fs.readFile(filePath, 'utf8');
+      assert.ok(content.includes('REPLACED'), 'file should contain replacement');
+    } finally {
+      await fs.rm(filePath, { force: true });
+    }
+  });
+});

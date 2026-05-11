@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import logger from '../../core/logger.js';
+import { stripSecrets } from '../../core/utils.js';
 
 // Lazy-loaded PTY module — may be unavailable on platforms without native build support
 let _ptyModule = null;
@@ -206,13 +207,12 @@ export const execute = async ({ command, cwd = process.cwd(), env = process.env,
 
   // Sanitize environment
   const safeEnv = {};
-  const sourceEnv = env === process.env ? process.env : env;
-  if (env === process.env) {
-    for (const key of SAFE_ENV_KEYS) {
-      if (key in sourceEnv) safeEnv[key] = sourceEnv[key];
-    }
+  for (const key of SAFE_ENV_KEYS) {
+    if (key in process.env) safeEnv[key] = process.env[key];
   }
-  Object.assign(safeEnv, env !== process.env ? env : {});
+  if (env !== process.env) {
+    Object.assign(safeEnv, stripSecrets(env));
+  }
 
   // Try PTY first, fall back to spawn if node-pty unavailable
   const ptyMod = await getPty();
