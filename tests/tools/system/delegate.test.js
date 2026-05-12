@@ -58,10 +58,7 @@ describe('Delegate tool — execute()', () => {
       maxTokens: undefined,
     };
 
-    const result = await mod.execute(
-      { description: 'Test task', prompt: 'Do something useful' },
-      { agent: fakeAgent },
-    );
+    const result = await mod.execute({ description: 'Test task', prompt: 'Do something useful' }, { agent: fakeAgent });
 
     assert.strictEqual(result, 'Sub-agent report: done');
     assert.strictEqual(Agent.prototype.run.mock.calls.length, 1);
