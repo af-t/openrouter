@@ -99,7 +99,7 @@ function hasSuspiciousPattern(command) {
 function runWithSpawn(command, cwd, env, timeout) {
   return new Promise((resolve, reject) => {
     // Redirect stderr (2) to stdout (1) via stdio option
-    const child = spawn('bash', ['-c', command, '2>&1'], {
+    const child = spawn('bash', ['-c', 'exec 2>&1; ' + command], {
       cwd,
       env,
       timeout,
