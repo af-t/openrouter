@@ -134,6 +134,7 @@ function applyEdit(content, edit, i, lineOffset) {
 }
 
 export const name = 'Edit';
+export const parallelSafe = false;
 export const description =
   'Surgically update a file with one or more sequential actions (replace, insert, delete). ' +
   'Actions are applied top-to-bottom; the file is only written if every action succeeds. ' +
