@@ -388,7 +388,12 @@ describe('Todo Tool', () => {
   it('should display due_date info when listing todos with due_date', async () => {
     await cleanup();
     const mod = await import('../../../src/tools/general/todo.js');
-    await mod.execute({ action: 'add', text: 'Task with due date', due_date: '2030-06-15T00:00:00Z', todo_file: testFile });
+    await mod.execute({
+      action: 'add',
+      text: 'Task with due date',
+      due_date: '2030-06-15T00:00:00Z',
+      todo_file: testFile,
+    });
 
     const result = await mod.execute({ action: 'list', todo_file: testFile });
     assert.ok(result.includes('6/15/2030') || result.includes('2030'), 'should display due date');
@@ -460,9 +465,6 @@ describe('Todo Tool', () => {
   it('should throw for unknown action', async () => {
     await cleanup();
     const mod = await import('../../../src/tools/general/todo.js');
-    await assert.rejects(
-      () => mod.execute({ action: 'invalid_action', todo_file: testFile }),
-      /Unknown action/,
-    );
+    await assert.rejects(() => mod.execute({ action: 'invalid_action', todo_file: testFile }), /Unknown action/);
   });
 });

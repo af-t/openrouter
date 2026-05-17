@@ -52,7 +52,11 @@ function spawnCommand(args, signal) {
       const out = Buffer.concat(output).toString();
       const err = Buffer.concat(errOutput).toString();
 
-      const isPartialSuccess = (args[0] === 'find' && out.length > 0) || (args[0] === 'rg' && code === 1);
+      const isPartialSuccess =
+        (args[0] === 'find' && out.length > 0) ||
+        // rg code=1: no matches, code=2: runtime error (e.g. permission denied on subdir)
+        // Accept both if we have stdout, so permission errors on unreadable dirs don't kill the whole search
+        (args[0] === 'rg' && (code === 1 || (code === 2 && out.length > 0)));
 
       if (code === 0 || isPartialSuccess) {
         resolve(out);
